@@ -19,3 +19,9 @@ def test_training_activation_does_not_export_evaluation_manifest() -> None:
     text = (PROJECT_ROOT / "scripts" / "activate_leonardo.sh").read_text(encoding="utf-8")
     training_branch = text.split('elif [[ "${PHASE}" == "evaluation" ]]', 1)[0]
     assert "unset MIQ_EVAL_ASSETS_MANIFEST MIQ_EVAL_REPO" in training_branch
+
+
+def test_staging_checks_python311_before_downloading_anything() -> None:
+    text = (PROJECT_ROOT / "scripts" / "stage_offline_bundle.sh").read_text(encoding="utf-8")
+    assert "module spider python/3.11" in text
+    assert text.index("BOOTSTRAP_VERSION") < text.index("git clone")

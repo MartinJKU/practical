@@ -67,15 +67,23 @@ for script in scripts/*.sh scripts/slurm/*.sbatch; do bash -n "$script"; done
 
 ## 2. Copy and stage on a connected Leonardo login node
 
-First check the live CINECA module and queue policy (`module avail`, `sinfo`, and
-`saldo -b`). Load a Python 3.11 module, then choose a brand-new persistent path;
-the staging command intentionally refuses an existing destination.
+First check the live CINECA module and queue policy (`module spider python/3.11`,
+`sinfo`, and `saldo -b`). Leonardo's unconfigured `python3` may still be Python
+3.6, so load the deep-learning profile and an available Python 3.11 module
+before choosing a brand-new persistent path. The module name below is the known
+Leonardo Python 3.11 module; use the exact name reported by `module spider` if it
+has changed. The staging command intentionally refuses an existing destination.
 
 ```bash
+module purge
+module load profile/deeplrn
+module load python/3.11.6--gcc--8.5.0
+python --version  # must report Python 3.11.x
+
 export MIQ_PROJECT_ROOT="$WORK/moleculariq_grpo_single_task_20260827"
 cd "$MIQ_PROJECT_ROOT"
 
-export MIQ_BOOTSTRAP_PYTHON="$(command -v python3)"
+export MIQ_BOOTSTRAP_PYTHON="$(command -v python)"
 export MIQ_OFFLINE_BUNDLE_ROOT="$WORK/miq_artifacts/offline_bundle_v1"
 bash scripts/stage_offline_bundle.sh
 ```
