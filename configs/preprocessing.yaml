@@ -1,0 +1,80 @@
+schema_version: 1
+dataset_bundle_name: moleculariq_trainpool_single_task_v1
+source:
+  dataset_id: ml-jku/moleculariq-trainPool
+  pool_name: train
+  staged_pool_path: ${MIQ_STAGED_TRAIN_POOL}
+  staged_manifest_path: ${MIQ_STAGED_TRAIN_POOL_MANIFEST}
+output_root: ${MIQ_DATA_ROOT}
+seed: 1729
+workers: 24
+sampling_strategy: uniform_over_molecules_then_uniform_over_configured_properties
+enable_random_phrasing: true
+max_attempts_factor: 1.35
+system_prompt_policy: pinned_official_evaluator_prompt
+task_families:
+  count:
+    num_examples: 20000
+    min_properties: 1
+    max_properties: 3
+    allowed_properties:
+      - ring_count
+      - fused_ring_count
+      - bridgehead_count
+      - aromatic_ring_count
+      - aliphatic_ring_count
+      - heterocycle_count
+      - saturated_ring_count
+      - csp3_carbon_count
+      - carbon_atom_count
+      - hetero_atom_count
+      - halogen_atom_count
+      - heavy_atom_count
+      - hba_count
+      - hbd_count
+      - rotatable_bond_count
+      - murcko_scaffold_count
+  index:
+    num_examples: 20000
+    min_properties: 1
+    max_properties: 3
+    allowed_properties:
+      - ring_index
+      - fused_ring_index
+      - bridgehead_index
+      - aromatic_ring_index
+      - aliphatic_ring_index
+      - heterocycle_index
+      - saturated_ring_index
+      - csp3_carbon_index
+      - carbon_atom_index
+      - hetero_atom_index
+      - halogen_atom_index
+      - heavy_atom_index
+      - hba_index
+      - hbd_index
+      - rotatable_bond_index
+      - murcko_scaffold_index
+  constraint:
+    num_examples: 20000
+    min_properties: 1
+    max_properties: 3
+    require_positive_constraint: true
+    operators:
+      - "="
+    allowed_properties:
+      - ring_count
+      - fused_ring_count
+      - aromatic_ring_count
+      - aliphatic_ring_count
+      - heterocycle_count
+      - saturated_ring_count
+      - csp3_carbon_count
+      - carbon_atom_count
+      - hetero_atom_count
+      - halogen_atom_count
+      - heavy_atom_count
+      - hba_count
+      - hbd_count
+      - rotatable_bond_count
+

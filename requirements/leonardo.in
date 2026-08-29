@@ -1,0 +1,17 @@
+# Direct pins. scripts/stage_offline_bundle.sh resolves and hashes the complete
+# Linux/Python 3.11 wheelhouse before any offline compute job is submitted.
+accelerate==1.14.0
+datasets==5.0.1
+huggingface-hub==1.29.0
+matplotlib==3.11.1
+pandas==3.0.5
+PyYAML==6.0.3
+rdkit==2026.3.5
+tensorboard==2.21.0
+torch==2.5.1+cu121
+transformers==5.16.1
+trl==1.12.0
+pytest==9.1.1
+
+# Official MolecularIQ Core. This exact commit is built into the wheelhouse.
+moleculariq-core @ git+https://github.com/ml-jku/moleculariq-core.git@a1b89635371c3cd942e44ebeec63ec3665e7743d

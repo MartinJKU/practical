@@ -1,0 +1,41 @@
+schema_version: 1
+evaluation_suite_id: moleculariq_full_baseline_vs_single_task_grpo_v1
+official_evaluator:
+  repo_path: ${MIQ_EVAL_REPO}
+  expected_commit: 425ecaaa8faf65aa43aa60ec0f584b7b7f060063
+  task: moleculariq_pass_at_k
+  dataset_id: ml-jku/moleculariq-v0.0
+  expected_repeats: 3
+  full_benchmark: true
+  apply_chat_template: true
+  system_prompt_policy: pinned_official_evaluator_prompt
+  batch_size: 4
+  model_backend: hf
+  dtype: bfloat16
+  generation:
+    temperature: 0.7
+    top_p: 0.95
+    top_k: 50
+models:
+  baseline:
+    experiment_id: baseline_qwen25_05b_instruct
+    task_family: null
+    checkpoint_path: ${MIQ_MODEL_PATH}
+  count_grpo:
+    experiment_id: qwen25_05b_miq_count_grpo_v1
+    task_family: count
+    checkpoint_path: ${MIQ_RUN_ROOT}/qwen25_05b_miq_count_grpo_v1/final_model
+  index_grpo:
+    experiment_id: qwen25_05b_miq_index_grpo_v1
+    task_family: index
+    checkpoint_path: ${MIQ_RUN_ROOT}/qwen25_05b_miq_index_grpo_v1/final_model
+  constraint_grpo:
+    experiment_id: qwen25_05b_miq_constraint_grpo_v1
+    task_family: constraint
+    checkpoint_path: ${MIQ_RUN_ROOT}/qwen25_05b_miq_constraint_grpo_v1/final_model
+output_root: ${MIQ_EVAL_RESULTS_ROOT}
+benchmark_integrity:
+  benchmark_used_for_training: false
+  benchmark_used_for_hparam_selection: false
+  benchmark_used_for_prompt_tuning: false
+  benchmark_used_for_checkpoint_selection: false
