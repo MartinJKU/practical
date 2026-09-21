@@ -47,6 +47,7 @@ YAML SHA-256
 configs/                 preprocessing, three experiments, official evaluation
 requirements/            connected-node inputs for the offline wheelhouse
 scripts/slurm/            CPU preprocessing, GPU smoke/train/eval, CPU reporting
+scripts/cloud/            portable RunPod staging and phase runners
 src/miq_grpo/             builders, parser, rewards, trainer, evaluator, plots
 tests/                    CPU-only integrity and adversarial reward tests
 ```
@@ -62,8 +63,182 @@ Python 3.11 is required. The pure tests do not need PyTorch or RDKit:
 cd /path/to/moleculariq_grpo_single_task_20260827
 PYTHONPATH=src python3.11 -m pytest -q
 python3.11 -m compileall -q src
-for script in scripts/*.sh scripts/slurm/*.sbatch; do bash -n "$script"; done
+for script in scripts/*.sh scripts/cloud/*.sh scripts/slurm/*.sbatch; do bash -n "$script"; done
 ```
+
+## Run immediately on RunPod Secure Cloud
+
+Use an **on-demand Secure Cloud Pod**, not Serverless or an interruptible/Spot
+Pod. With only one week available, the preferred GPU is one **A100 80 GB** per
+worker. An **L40S 48 GB** is the budget fallback, but only after the complete
+GPU smoke gate passes. Create a **250 GB network volume** in a data center with
+enough same-GPU inventory and attach it at `/workspace`. Keep the source,
+sealed bundle, datasets, checkpoints, official results, and report on that
+volume; the container disk is disposable.
+
+Start with one A100 80 GB Pod using a PyTorch image that provides Python 3.11
+and SSH. Use that identical image for every later worker. After connecting,
+verify the interpreter, GPU, driver, and persistent mount:
+
+```bash
+nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+df -h /workspace
+python3 -c 'import sys; assert sys.version_info[:2] == (3, 11), sys.version; print(sys.version)'
+```
+
+If the last command fails because the template has another Python version, make
+a Python 3.11 bootstrap interpreter with the template's Conda installation:
+
+```bash
+eval "$(conda shell.bash hook)"
+conda create -y -n miq-bootstrap python=3.11
+conda activate miq-bootstrap
+python -c 'import sys; assert sys.version_info[:2] == (3, 11), sys.version; print(sys.version)'
+```
+
+`nvidia-smi` must identify the purchased GPU and a driver that supports CUDA
+12.1 or newer. The staged environment installs the pinned CUDA 12.1 PyTorch
+build and the smoke phase verifies CUDA from inside that exact environment.
+
+### Update the clone, then stage and run the gates
+
+Use one clean clone at a stable path on the network volume. Pull the portable
+runner revision before creating the sealed bundle, and record the exact commit:
+
+```bash
+cd /workspace/practical  # replace this if the clone has a different name
+git checkout main
+git pull --ff-only origin main
+test -f scripts/cloud/stage_bundle.sh
+test -z "$(git status --porcelain)"
+git rev-parse HEAD
+export MIQ_PROJECT_ROOT="$(pwd -P)"
+```
+
+Do not pull, edit, or replace this clone after the bundle is staged. The bundle
+seal binds the installed package and every project source byte to this absolute
+path. A later code change therefore requires a new clone path, bundle path, and
+run ID.
+
+Choose one unique run ID and use the same exports in every Pod shell. Do not
+change the ID, paths, or checked-out source midway through the study.
+
+```bash
+# Keep the MIQ_PROJECT_ROOT value exported above.
+export MIQ_CLOUD_ROOT=/workspace/miq_cloud
+export MIQ_CLOUD_RUN_ID=runpod_a100_20260922_v1
+export MIQ_CLOUD_PROVIDER=runpod
+cd "$MIQ_PROJECT_ROOT"
+```
+
+Stage once on the first connected Pod, then initialize and validate the new
+experiment suite:
+
+```bash
+export MIQ_BOOTSTRAP_PYTHON="$(command -v python3)"
+bash scripts/cloud/stage_bundle.sh
+bash scripts/cloud/init_run.sh
+bash scripts/cloud/preprocess.sh
+bash scripts/cloud/gpu_smoke.sh
+bash scripts/cloud/status.sh
+```
+
+Do **not** copy the Leonardo bundle or its virtual environment. Its manifest,
+installed scripts, and virtual environment are bound to absolute Leonardo paths
+and source bytes. `stage_bundle.sh` creates a fresh RunPod bundle at
+`$MIQ_CLOUD_ROOT/offline_bundles/offline_bundle_v1`, seals it, and every later
+phase verifies it before doing work. Do not edit or update the source after
+staging. A code or configuration change requires a new bundle path and a new
+run ID; never replace artifacts under an existing identity.
+
+If using the L40S fallback and smoke fails because 48 GB is insufficient,
+deploy A100 80 GB workers and initialize a new run ID. Keep the verified RunPod
+bundle at its unchanged absolute path, but do not mix the failed L40S suite
+with the new A100 suite or weaken the training configuration to make smoke
+pass.
+
+### Train three models in parallel
+
+Only continue after `gpu_smoke.sh` succeeds for count, index, and constraint.
+Deploy two additional one-GPU Pods of the **same GPU type**, attaching the same
+network volume during deployment. In all three Pods, repeat the common exports
+above and run one command each inside a persistent terminal such as `tmux`:
+
+```bash
+# Pod 1
+bash scripts/cloud/train.sh count
+
+# Pod 2
+bash scripts/cloud/train.sh index
+
+# Pod 3
+bash scripts/cloud/train.sh constraint
+```
+
+The default resume mode is `auto`. After a Pod interruption, attach the same
+volume to a replacement Pod of the same GPU type, restore the same exports, and
+rerun the same command; it resumes from the newest valid checkpoint. Do not use
+`--fresh` to bypass a partial production run. Inspect progress from any Pod:
+
+```bash
+bash scripts/cloud/status.sh
+```
+
+The phase logs are under
+`$MIQ_CLOUD_ROOT/experiments/$MIQ_CLOUD_RUN_ID/logs`. Use `tail -F` on the file
+reported for the active phase when closer monitoring is needed. Do not start
+official evaluation until status shows all three `training_complete.json`
+manifests as valid.
+
+### Evaluate in parallel and build the report
+
+For the shortest wall clock, use four concurrent one-GPU workers. Run the
+baseline and all three trained models on the **same GPU type**—all L40S or all
+A100 80 GB—and with the same run ID and network volume:
+
+```bash
+# One command per Pod
+bash scripts/cloud/evaluate.sh baseline
+bash scripts/cloud/evaluate.sh count_grpo
+bash scripts/cloud/evaluate.sh index_grpo
+bash scripts/cloud/evaluate.sh constraint_grpo
+```
+
+Each command performs one full official 5,111-document MolecularIQ evaluation.
+These are final held-out measurements, not a debugging or checkpoint-selection
+loop. When `status.sh` reports all four evaluations complete, run once:
+
+```bash
+bash scripts/cloud/report.sh
+bash scripts/cloud/status.sh
+```
+
+The immutable suite is rooted at
+`$MIQ_CLOUD_ROOT/experiments/$MIQ_CLOUD_RUN_ID`; its `report/` directory holds
+the CSVs, PNG/PDF figures, manifest, and `_COMPLETE` marker described below.
+Download the complete suite—including frozen data, three model runs, raw
+official results, and report—using RunPod's SFTP/SCP or network-volume cloud
+sync. Verify the downloaded hashes before deleting remote data.
+
+**Billing warning:** as soon as the report and artifacts are safely downloaded,
+stop or terminate every GPU Pod in the RunPod console. A separately created
+network volume survives Pod termination, so storage charges continue until the
+volume itself is deleted. Never delete the volume before verifying the local
+copy.
+
+### One-week execution schedule
+
+| Deadline | Required milestone |
+|---|---|
+| Day 1 | Create volume/Pod, upload source, stage bundle, preprocess, pass smoke |
+| Days 1–3 | Run count, index, and constraint training concurrently |
+| Days 3–5 | Run baseline and three official evaluations concurrently |
+| Day 6 | Build report, inspect manifests/plots, download and verify everything |
+| Day 7 | Reserved for checkpoint resume, failed-Pod replacement, or transfer |
+
+Do not serialize all seven GPU jobs on one Pod: the conservative reservation
+envelope leaves essentially no recovery time inside one week. Parallel workers
+write to separate task/model directories on the shared network volume.
 
 ## 2. Copy and stage on a connected Leonardo login node
 

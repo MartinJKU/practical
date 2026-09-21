@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import socket
 import subprocess
 import sys
@@ -160,6 +161,82 @@ def git_state(root: str | Path) -> dict[str, Any]:
         return {"commit": None, "dirty": None, "status": []}
 
 
+def _accelerator_provenance() -> dict[str, Any]:
+    """Capture report-safe GPU/runtime facts without recording credentials."""
+    nvidia_smi: dict[str, Any]
+    executable = shutil.which("nvidia-smi")
+    if executable is None:
+        nvidia_smi = {"available": False, "gpus": []}
+    else:
+        command = [
+            executable,
+            "--query-gpu=index,name,driver_version,memory.total",
+            "--format=csv,noheader,nounits",
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            rows = []
+            if completed.returncode == 0:
+                for line in completed.stdout.splitlines():
+                    parts = [part.strip() for part in line.split(",", maxsplit=3)]
+                    if len(parts) == 4:
+                        rows.append(
+                            {
+                                "index": parts[0],
+                                "name": parts[1],
+                                "driver_version": parts[2],
+                                "memory_total_mib": parts[3],
+                            }
+                        )
+            nvidia_smi = {
+                "available": completed.returncode == 0,
+                "returncode": completed.returncode,
+                "gpus": rows,
+                "stderr": completed.stderr.strip() if completed.returncode else "",
+            }
+        except (OSError, subprocess.TimeoutExpired) as error:
+            nvidia_smi = {"available": False, "gpus": [], "error": type(error).__name__}
+
+    torch_cuda: dict[str, Any]
+    try:
+        import torch
+
+        cuda_available = bool(torch.cuda.is_available())
+        devices = []
+        if cuda_available:
+            for index in range(torch.cuda.device_count()):
+                properties = torch.cuda.get_device_properties(index)
+                devices.append(
+                    {
+                        "index": index,
+                        "name": properties.name,
+                        "compute_capability": [properties.major, properties.minor],
+                        "total_memory_bytes": properties.total_memory,
+                    }
+                )
+        torch_cuda = {
+            "available": cuda_available,
+            "torch_cuda_version": torch.version.cuda,
+            "cudnn_version": torch.backends.cudnn.version(),
+            "device_count": len(devices),
+            "devices": devices,
+        }
+    except (ImportError, OSError, RuntimeError) as error:
+        torch_cuda = {"available": False, "devices": [], "error": type(error).__name__}
+
+    return {
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "nvidia_smi": nvidia_smi,
+        "torch_cuda": torch_cuda,
+    }
+
+
 def runtime_provenance(project_root: str | Path) -> dict[str, Any]:
     slurm_keys = (
         "SLURM_JOB_ID",
@@ -172,6 +249,19 @@ def runtime_provenance(project_root: str | Path) -> dict[str, Any]:
         "SLURM_JOB_PARTITION",
         "SLURM_JOB_QOS",
         "SLURM_JOB_ACCOUNT",
+    )
+    # Deliberately whitelist non-secret execution metadata. Never collect the
+    # full environment: cloud API keys and Hugging Face tokens may be present.
+    execution_keys = (
+        "MIQ_EXECUTION_PLATFORM",
+        "MIQ_CLOUD_PROVIDER",
+        "MIQ_CLOUD_REGION",
+        "MIQ_CONTAINER_IMAGE",
+        "MIQ_CONTAINER_IMAGE_DIGEST",
+        "MIQ_EXECUTION_ID",
+        "RUNPOD_POD_ID",
+        "RUNPOD_DC_ID",
+        "RUNPOD_GPU_COUNT",
     )
     return {
         "captured_at": utc_now(),
@@ -194,4 +284,6 @@ def runtime_provenance(project_root: str | Path) -> dict[str, Any]:
         "git": git_state(project_root),
         "source_tree_sha256": source_tree_sha256(project_root),
         "slurm": {key: os.environ.get(key) for key in slurm_keys},
+        "execution_environment": {key: os.environ.get(key) for key in execution_keys},
+        "accelerator": _accelerator_provenance(),
     }

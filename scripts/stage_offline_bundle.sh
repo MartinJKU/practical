@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run once on a connected Leonardo login node. Downloads are login-node work;
-# all chemistry preprocessing, training, and evaluation remain SLURM jobs.
+# Run once on an internet-connected x86-64 Linux host. The resulting bundle is
+# sealed to this project path and must stay at its final persistent path.
 PROJECT_ROOT="${MIQ_PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 export MIQ_PROJECT_ROOT="${PROJECT_ROOT}"
-: "${MIQ_OFFLINE_BUNDLE_ROOT:?Set MIQ_OFFLINE_BUNDLE_ROOT to a new persistent path under WORK or SCRATCH}"
+: "${MIQ_OFFLINE_BUNDLE_ROOT:?Set MIQ_OFFLINE_BUNDLE_ROOT to a new persistent path}"
 
 if [[ -n "${MIQ_BOOTSTRAP_PYTHON:-}" ]]; then
   BOOTSTRAP_PYTHON="${MIQ_BOOTSTRAP_PYTHON}"
@@ -25,9 +25,11 @@ BOOTSTRAP_VERSION="$(
 if [[ ! "${BOOTSTRAP_VERSION}" =~ ^3\.11\. ]]; then
   cat >&2 <<EOF
 Python 3.11 is required, but ${BOOTSTRAP_PYTHON} is Python ${BOOTSTRAP_VERSION}.
-On Leonardo, load the deep-learning profile and an available Python 3.11 module first, then run:
+Select a Python 3.11 interpreter and then run:
   export MIQ_BOOTSTRAP_PYTHON="\$(command -v python)"
-Use 'module spider python/3.11' to inspect the currently available module name.
+On Conda-based cloud images, create one with:
+  conda create -y -n miq-bootstrap python=3.11
+On Leonardo, use 'module spider python/3.11' to find an available module.
 EOF
   exit 2
 fi
