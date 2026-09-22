@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -239,3 +240,16 @@ def test_every_execution_uses_the_fresh_sealed_bundle_contract() -> None:
     for name in ("preprocess.sh", "gpu_smoke.sh", "train.sh", "evaluate.sh", "report.sh"):
         text = _text(name)
         assert "activate_portable.sh" in text, name
+
+
+def test_dataset_builder_module_has_a_cli_entry_point() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "miq_grpo.dataset_builder", "--help"],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(PROJECT_ROOT / "src")},
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "--write-bundle-pointer" in completed.stdout

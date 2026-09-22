@@ -412,3 +412,7 @@ def main() -> None:
         with pointer.open("x", encoding="utf-8") as handle:
             handle.write(str(bundle) + "\n")
     print(bundle)
+
+
+if __name__ == "__main__":
+    main()
