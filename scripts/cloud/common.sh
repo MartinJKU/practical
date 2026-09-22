@@ -117,6 +117,13 @@ miq_cloud_lock() {
     || miq_cloud_die "phase '${name}' is already running in another process/pod"
 }
 
+miq_cloud_create_attempt_dir() {
+  local attempt_dir="$1"
+  mkdir -p "$(dirname "${attempt_dir}")"
+  mkdir "${attempt_dir}" \
+    || miq_cloud_die "attempt identifier collision: ${attempt_dir}"
+}
+
 miq_cloud_begin_attempt() {
   local phase="$1"
   local host
@@ -127,8 +134,7 @@ miq_cloud_begin_attempt() {
   MIQ_CLOUD_ATTEMPT_LOG="${MIQ_CLOUD_LOG_ROOT}/${phase}/${MIQ_CLOUD_ATTEMPT_ID}.log"
   export MIQ_EXECUTION_ID="${MIQ_CLOUD_ATTEMPT_ID}"
   mkdir -p "$(dirname "${MIQ_CLOUD_ATTEMPT_LOG}")"
-  mkdir "${MIQ_CLOUD_ATTEMPT_DIR}" \
-    || miq_cloud_die "attempt identifier collision: ${MIQ_CLOUD_ATTEMPT_DIR}"
+  miq_cloud_create_attempt_dir "${MIQ_CLOUD_ATTEMPT_DIR}"
   printf '%s\n' \
     "phase=${phase}" \
     "attempt_id=${MIQ_CLOUD_ATTEMPT_ID}" \

@@ -131,10 +131,35 @@ def test_parallel_phases_use_locks_scoped_below_the_suite() -> None:
     assert "MIQ_PIPELINE_STATE" in common
     assert "MIQ_CLOUD_ATTEMPT_ID" in common
     assert "-$$" in common
-    assert 'mkdir "${MIQ_CLOUD_ATTEMPT_DIR}"' in common
+    assert "miq_cloud_create_attempt_dir" in common
     assert re.search(r"lock[^\n]*TASK|TASK[^\n]*lock", train, re.IGNORECASE)
     assert re.search(r"lock[^\n]*MODEL|MODEL[^\n]*lock", evaluate, re.IGNORECASE)
     assert "MIQ_EVAL_RESULTS_ROOT" in evaluate
+
+
+def test_attempt_creation_makes_the_phase_parent_directory(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            """
+set -euo pipefail
+source "$1"
+miq_cloud_create_attempt_dir "$2/state/attempts/stage-bundle/attempt-1"
+""",
+            "bash",
+            str(CLOUD_ROOT / "common.sh"),
+            str(tmp_path),
+        ],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    attempts = list((tmp_path / "state" / "attempts" / "stage-bundle").iterdir())
+    assert len(attempts) == 1
+    assert attempts[0].is_dir()
 
 
 def test_production_training_forwards_termination_to_checkpoint_handler() -> None:
